@@ -82,17 +82,20 @@ def import_from_wsclean(wsclean_comp_list,
     include = np.ones_like(wsclean_comps['Type'], bool)
 
     if include_regions:
-        include[...] = False
+        include[:] = False
         # NB: regions is *supposed* to have a sensible "contains" interface,
         # but it doesn't work as of Mar 2019. So hacking
         # a kludge for circular regions for now
         from regions import CircleSkyRegion
 
-        circ_regions = filter(lambda x: type(x[1]) is CircleSkyRegion, enumerate(include_regions))
+        if not all([type(reg) is CircleSkyRegion for reg in include_regions]):
+            raise ValueError('Only circular DS( regions supported for now')
 
-        for reg_indx, reg in circ_regions:
-            coord = SkyCoord(wsclean_comps['Ra'], wsclean_comps['Dec'],
-                             unit="rad", frame=reg.center.frame)
+        coord = SkyCoord(wsclean_comps['Ra'], wsclean_comps['Dec'],
+                         unit="rad", frame=include_regions[0].center.frame)
+        include = coord.separation(include_regions[0].center) <= include_regions[0].radius
+
+        for reg in include_regions[1:]:
             include |= coord.separation(reg.center) <= reg.radius
 
         log.info("%d of which fall within the %d inclusive regions",
