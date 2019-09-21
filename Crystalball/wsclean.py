@@ -8,14 +8,18 @@ import logging
 
 from africanus.model.wsclean.file_model import load
 from astropy.coordinates import Angle, SkyCoord
+from africanus.linalg.geometry import BoundingConvexHull
 import numpy as np
 
 
 log = logging.getLogger(__name__)
 
 
-def import_from_wsclean(wsclean_comp_list, include_regions=[],
-                        point_only=False, num=None):
+def import_from_wsclean(wsclean_comp_list, 
+                        include_regions=[],
+                        exclude_regions=[],
+                        point_only=False, 
+                        num=None):
     """
     Imports sources from wsclean, sorted from brightest to faintest.
     If ``include_regions`` is specified only those sources within
@@ -78,20 +82,17 @@ def import_from_wsclean(wsclean_comp_list, include_regions=[],
     include = np.ones_like(wsclean_comps['Type'], bool)
 
     if include_regions:
-        include[:] = False
+        include[...] = False
         # NB: regions is *supposed* to have a sensible "contains" interface,
         # but it doesn't work as of Mar 2019. So hacking
         # a kludge for circular regions for now
         from regions import CircleSkyRegion
 
-        if not all([type(reg) is CircleSkyRegion for reg in include_regions]):
-            raise ValueError('Only circular DS( regions supported for now')
+        circ_regions = filter(lambda x: type(x[1]) is CircleSkyRegion, enumerate(include_regions))
 
-        coord = SkyCoord(wsclean_comps['Ra'], wsclean_comps['Dec'],
-                         unit="rad", frame=include_regions[0].center.frame)
-        include = coord.separation(include_regions[0].center) <= include_regions[0].radius
-
-        for reg in include_regions[1:]:
+        for reg_indx, reg in circ_regions:
+            coord = SkyCoord(wsclean_comps['Ra'], wsclean_comps['Dec'],
+                             unit="rad", frame=reg.center.frame)
             include |= coord.separation(reg.center) <= reg.radius
 
         log.info("%d of which fall within the %d inclusive regions",

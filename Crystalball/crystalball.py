@@ -156,11 +156,12 @@ def einsum_schema(pol, dospec):
 def predict(args):
     # get inclusion regions
     include_regions = []
+    exclude_regions = []
     if args.within:
         from regions import read_ds9
         import tempfile
         # kludge because regions cries over "FK5", wants lowercase
-        with tempfile.NamedTemporaryFile() as tmpfile, open(args.within) as regfile:
+        with tempfile.NamedTemporaryFile(mode = "w") as tmpfile, open(args.within) as regfile:
             tmpfile.write(regfile.read().lower())
             tmpfile.flush()
             include_regions = read_ds9(tmpfile.name)
@@ -172,6 +173,7 @@ def predict(args):
      spec_coeff, ref_freq, log_spec_ind,
      gaussian_shape) = import_from_wsclean(args.sky_model,
                                            include_regions=include_regions,
+                                           exclude_regions=exclude_regions,
                                            point_only=args.points_only,
                                            num=args.num_sources or None)
 
