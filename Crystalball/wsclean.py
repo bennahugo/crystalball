@@ -8,7 +8,7 @@ import logging
 
 from africanus.model.wsclean.file_model import load
 from astropy.coordinates import Angle, SkyCoord
-from africanus.linalg.geometry import BoundingConvexHull
+#from africanus.linalg.geometry import BoundingConvexHull
 import numpy as np
 
 
