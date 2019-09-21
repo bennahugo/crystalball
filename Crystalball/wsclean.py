@@ -143,5 +143,5 @@ def import_from_wsclean(wsclean_comp_list,
     return (wsclean_comps['Type'], radec, stokes,
             wsclean_comps['SpectralIndex'],
             wsclean_comps['ReferenceFrequency'],
-            wsclean_comps['LogarithmicSI'][0],
+            wsclean_comps['LogarithmicSI'][0] if len(wsclean_comps['LogarithmicSI']) != 0 else 0,
             gauss_shape)
