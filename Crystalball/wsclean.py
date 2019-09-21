@@ -91,7 +91,7 @@ def import_from_wsclean(wsclean_comp_list,
         if not all([type(reg) is CircleSkyRegion for reg in include_regions]):
             raise ValueError('Only circular DS( regions supported for now')
 
-        coord = SkyCoord("-"+wsclean_comps['Ra'], wsclean_comps['Dec'],
+        coord = SkyCoord(["-" + ra for ra in wsclean_comps['Ra']], wsclean_comps['Dec'],
                          unit="rad", frame=include_regions[0].center.frame)
         include = coord.separation(include_regions[0].center) <= include_regions[0].radius
 
