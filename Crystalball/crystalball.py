@@ -72,7 +72,8 @@ def create_parser():
     p.add_argument("-mf", "--memory-fraction", type=float, default=0.5,
                    help="Fraction of system RAM that can be used. Used when setting automatically the "
                         "chunk size. Default in 0.5.")
-
+    p.add_argument("-f", "--fieldid", type=int, default=0,
+                   help="Field to select for prediction")
     return p
 
 
@@ -215,7 +216,9 @@ def predict(args):
                            columns=["UVW", "ANTENNA1", "ANTENNA2", "TIME"],
                            group_cols=["FIELD_ID", "DATA_DESC_ID"],
                            chunks={"row": args.row_chunks}):
-
+        if xds.attrs['FIELD_ID'] != args.fieldid:
+            continue
+        
         # Extract frequencies from the spectral window associated
         # with this data descriptor id
         field = field_ds[xds.attrs['FIELD_ID']]
