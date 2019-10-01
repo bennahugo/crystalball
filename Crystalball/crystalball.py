@@ -208,6 +208,8 @@ def predict(args):
         ngaussian_shape = []
 
         for urd in uniq_radec:
+            print comp_type.shape
+            print radec.shape
             deltasel = comp_type[radec == urd] == "POINT"
             polyspecsel = np.logical_not(spec_coef[radec == urd])
             sel = deltasel & polyspecsel
