@@ -191,7 +191,7 @@ def predict(args):
     ddid_ds = tables["DATA_DESCRIPTION"]
     spw_ds = tables["SPECTRAL_WINDOW"]
     pol_ds = tables["POLARIZATION"]
-    frequencies = np.sort([spw_ds[dd].CHAN_FREQ.data.flatten().values 
+    frequencies = np.sort([spw_ds[dd].CHAN_FREQ.data.flatten()
                             for dd in range(len(spw_ds))])
                             
     
