@@ -208,14 +208,14 @@ def predict(args):
         ngaussian_shape = []
 
         for urd in uniq_radec:
-            deltasel = comp_type[urd] == "POINT"
-            polyspecsel = np.logical_not(spec_coef[urd])
+            deltasel = comp_type[radec == urd] == "POINT"
+            polyspecsel = np.logical_not(spec_coef[radec == urd])
             sel = deltasel & polyspecsel
             Is=stokes[sel, 0, None] * frequency[None,:]**0
             for jj in range(spec_coeff.shape[1]):                
                 Is+=spec_coeff[sel, jj, None]*(frequency[None, :]/ref_freq[sel, None]-1)**(jj+1)
             Is = np.sum(Is, axis=0) # collapse over all the sources at this position
-            logpolyspecsel = np.logical_not(log_spec_coef[urd])
+            logpolyspecsel = np.logical_not(log_spec_coef[radec == urd])
             sel = deltasel & logpolyspecsel
             
             Is=np.log(stokes[sel, 0, None] * frequency[None,:]**0)
