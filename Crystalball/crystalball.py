@@ -191,9 +191,8 @@ def predict(args):
     ddid_ds = tables["DATA_DESCRIPTION"]
     spw_ds = tables["SPECTRAL_WINDOW"]
     pol_ds = tables["POLARIZATION"]
-    frequencies = np.sort([spw_ds[ddid].CHAN_FREQ.data.flatten().values 
-                            for dd in range(len(ddid_ds))
-                            for ddid in ddid_ds[dd].SPECTRAL_WINDOW_ID])
+    frequencies = np.sort([spw_ds[dd].CHAN_FREQ.data.flatten().values 
+                            for dd in range(len(spw_ds))])
                             
     
     # cluster sources and refit. This only works for delta scale sources
