@@ -22,6 +22,8 @@ except ImportError as e:
 else:
     opt_import_error = None
 
+from scipy.optimize import curve_fit
+
 from africanus.coordinates.dask import radec_to_lm
 from africanus.rime.dask import phase_delay, predict_vis
 from africanus.model.coherency.dask import convert
@@ -34,6 +36,7 @@ from Crystalball.budget import get_budget
 from Crystalball.ms import ms_preprocess
 from Crystalball.wsclean import import_from_wsclean
 
+from Crystalball import log
 
 def create_parser():
     p = argparse.ArgumentParser()
@@ -74,6 +77,8 @@ def create_parser():
                         "chunk size. Default in 0.5.")
     p.add_argument("-f", "--fieldid", type=int, default=0,
                    help="Field to select for prediction")
+    p.add_argument("-dc", "--dontcluster", action="store_true",
+                   help="Do not cluster clean components and refit to order 4 polynomial")
     return p
 
 
@@ -166,7 +171,7 @@ def predict(args):
             tmpfile.write(regfile.read().lower())
             tmpfile.flush()
             include_regions = read_ds9(tmpfile.name)
-            print("read {} inclusion region(s) from {}".format(len(include_regions), args.within))
+            log.info("read {} inclusion region(s) from {}".format(len(include_regions), args.within))
 
     # Import source data from WSClean component list
     # See https://sourceforge.net/p/wsclean/wiki/ComponentList
@@ -178,9 +183,6 @@ def predict(args):
                                            point_only=args.points_only,
                                            num=args.num_sources or None)
 
-    # Add output column if it isn't present
-    ms_rows,ms_datatype = ms_preprocess(args)
-
     # Get the support tables
     tables = support_tables(args, ["FIELD", "DATA_DESCRIPTION",
                                    "SPECTRAL_WINDOW", "POLARIZATION"])
@@ -189,6 +191,89 @@ def predict(args):
     ddid_ds = tables["DATA_DESCRIPTION"]
     spw_ds = tables["SPECTRAL_WINDOW"]
     pol_ds = tables["POLARIZATION"]
+    frequencies = np.sort(spw_ds.CHAN_FREQ.data.flatten().values)
+    
+    # cluster sources and refit. This only works for delta scale sources
+    def __cluster(comp_type, radec, stokes, spec_coeff, ref_freq, log_spec_ind,
+                  gaussian_shape, frequencies):
+        uniq_radec = np.unique(radec)
+        ncomp_type = []
+        nradec = []
+        nstokes = []
+        nspec_coef = []
+        nref_freq = []
+        nlog_spec_ind = []
+        ngaussian_shape = []
+
+        for urd in uniq_radec:
+            deltasel = comp_type[urd] == "POINT"
+            polyspecsel = np.logical_not(spec_coef[urd])
+            sel = deltasel & polyspecsel
+            Is=stokes[sel, 0, None] * frequency[None,:]**0
+            for jj in range(spec_coeff.shape[1]):                
+                Is+=spec_coeff[sel, jj, None]*(frequency[None, :]/ref_freq[sel, None]-1)**(jj+1)
+            Is = np.sum(Is, axis=0) # collapse over all the sources at this position
+            logpolyspecsel = np.logical_not(log_spec_coef[urd])
+            sel = deltasel & logpolyspecsel
+            
+            Is=np.log(stokes[sel, 0, None] * frequency[None,:]**0)
+            for jj in range(spec_coeff.shape[1]):                
+                Is+=spec_coeff[sel,jj,None]*da.log((frequency[None,:]/ref_freq[sel,None])**(jj+1))
+            Is = np.exp(Is)
+            Islogpoly = np.sum(Is, axis=0) # collapse over all the sources at this position
+
+            popt, pfitvar = curve_fit(lambda i, a, b, c, d: i + a * (frequency/ref_freq[0, None] - 1) + 
+                                      b * (frequency/ref_freq[0, None] - 1)**2 + c * (frequency/ref_freq[sel, None] - 1)**3 + 
+                                      d * (frequency/ref_freq[0, None] - 1)**3, frequency, Ispoly + Islogpoly)
+            if not np.all(np.isfinite(pfitvar)):
+                popt[0] = np.sum(stokes[sel, 0, None], axis=0)
+                popt[1:] = np.inf
+                log.warn("Refitting at position {0:s} failed. Assuming flat spectrum source of {1:.2f} Jy".format(radec, popt[0]))
+            else: 
+                pcov = np.sqrt(np.diag(pfitvar))
+                log.info("New fitted flux {0:.3f} Jy at position {1:s} with covariance {2:s}".format(
+                    popt[0], radec, ", ".join([str(poptp) for poptp in popt])))
+
+            ncomp_type.append("POINT")
+            nradec.append(urd)
+            nstokes.append(popt[0])
+            nspec_coef.append(popt[1:])
+            nref_freq.append(ref_freq[0])
+            nlog_spec_ind = 0.0
+            
+        # add back all the gaussians
+        sel = comp_type[radec] == "GAUSSIAN"
+        for rd, stks, spec, ref, lspec, gs in zip(radec[sel], 
+                                                  stokes[sel], 
+                                                  spec_coef[sel], 
+                                                  ref_freq[sel], 
+                                                  log_spec_ind[sel],
+                                                  gaussian_shape[sel]):
+            nradec.append(rd)
+            nstokes.append(stks)
+            nspec_coef.append(spec)
+            nref_freq.append(ref)
+            nlog_spec_ind.append(lspec)
+            ngaussian_shape.append(gs)
+
+        return (np.array(ncomp_type), np.array(nradec), np.array(nstokes), 
+                np.array(nspec_coeff), np.array(nref_freq), np.array(nlog_spec_ind),
+                np.array(ngaussian_shape))
+                
+    if not args.dontcluster:
+        (comp_type, radec, stokes,
+        spec_coeff, ref_freq, log_spec_ind,
+        gaussian_shape) = __cluster(comp_type, 
+                                    radec, 
+                                    stokes,
+                                    spec_coeff, 
+                                    ref_freq, 
+                                    log_spec_ind,
+                                    gaussian_shape,
+                                    frequencies)
+
+    # Add output column if it isn't present
+    ms_rows,ms_datatype = ms_preprocess(args)
 
     # sort out resources
     args.row_chunks,args.model_chunks = get_budget(comp_type.shape[0],ms_rows,max([ss.NUM_CHAN.data for ss in spw_ds]),max([ss.NUM_CORR.data for ss in pol_ds]),ms_datatype,args)
@@ -257,13 +342,13 @@ def predict(args):
             spectrum=da.stack([Is,Qs,Us,Vs],axis=-1) # stack along new axis and make it the last axis of the new array
             spectrum=spectrum.rechunk(spectrum.chunks[:2] + (spectrum.shape[2],))
 
-        print('-------------------------------------------')
-        print('Nr sources        = {0:d}'.format(stokes.shape[0]))
-        print('-------------------------------------------')
-        print('stokes.shape      = {0:}'.format(stokes.shape))
-        print('frequency.shape   = {0:}'.format(frequency.shape))
-        if args.spectra: print('Is.shape          = {0:}'.format(Is.shape))
-        if args.spectra: print('spectrum.shape    = {0:}'.format(spectrum.shape))
+        log.info('-------------------------------------------')
+        log.info('Nr sources        = {0:d}'.format(stokes.shape[0]))
+        log.info('-------------------------------------------')
+        log.info('stokes.shape      = {0:}'.format(stokes.shape))
+        log.info('frequency.shape   = {0:}'.format(frequency.shape))
+        if args.spectra: log.info('Is.shape          = {0:}'.format(Is.shape))
+        if args.spectra: log.info('spectrum.shape    = {0:}'.format(spectrum.shape))
 
         # (source, row, frequency)
         phase = phase_delay(lm, uvw, frequency)
@@ -274,18 +359,18 @@ def predict(args):
         brightness = convert(spectrum if args.spectra else stokes, ["I", "Q", "U", "V"],
                              corr_schema(pol))
 
-        print('brightness.shape  = {0:}'.format(brightness.shape))
-        print('phase.shape       = {0:}'.format(phase.shape))
-        print('-------------------------------------------')
-        print('Attempting phase-brightness einsum with "{0:s}"'.format(einsum_schema(pol,args.spectra)))
+        log.info('brightness.shape  = {0:}'.format(brightness.shape))
+        log.info('phase.shape       = {0:}'.format(phase.shape))
+        log.info('-------------------------------------------')
+        log.info('Attempting phase-brightness einsum with "{0:s}"'.format(einsum_schema(pol,args.spectra)))
 
         # (source, row, frequency, corr_products)
         jones = da.einsum(einsum_schema(pol,args.spectra), phase, brightness)
-        print('jones.shape       = {0:}'.format(jones.shape))
-        print('-------------------------------------------')
-        if gaussian_components: print('Some Gaussian sources found')
-        else: print('All sources are Delta functions')
-        print('-------------------------------------------')
+        log.info('jones.shape       = {0:}'.format(jones.shape))
+        log.info('-------------------------------------------')
+        if gaussian_components: log.info('Some Gaussian sources found')
+        else: log.info('All sources are Delta functions')
+        log.info('-------------------------------------------')
 
         # Identify time indices
         _, time_index = da.unique(xds.TIME.data, return_inverse=True)
