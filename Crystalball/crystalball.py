@@ -249,6 +249,7 @@ def predict(args):
                                                   ref_freq[sel], 
                                                   log_spec_ind[sel],
                                                   gaussian_shape[sel]):
+            ncomp_type.append("GAUSSIAN")
             nradec.append(rd)
             nstokes.append(stks)
             nspec_coef.append(spec)
@@ -256,10 +257,11 @@ def predict(args):
             nlog_spec_ind.append(lspec)
             ngaussian_shape.append(gs)
 
+        log.info("Reduced {0:d} components to {1:d} components through by refitting".format(len(comp_type), len(ncomp_type)))
         return (np.array(ncomp_type), np.array(nradec), np.array(nstokes), 
                 np.array(nspec_coeff), np.array(nref_freq), np.array(nlog_spec_ind),
                 np.array(ngaussian_shape))
-                
+
     if not args.dontcluster:
         (comp_type, radec, stokes,
         spec_coeff, ref_freq, log_spec_ind,

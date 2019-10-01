@@ -2,7 +2,7 @@ import psutil
 import numpy as np
 import sys
 
-from CrystalBall import log
+from Crystalball import log
 
 def get_budget(nr_sources,nr_rows,nr_chans,nr_corrs,data_type,cb_args,fudge_factor=2.,row2source_ratio=100):
     systmem=np.float(psutil.virtual_memory()[0])
